@@ -1,6 +1,8 @@
-// Reglas de una planta nueva como funciones puras, sin Mongoose (spec 04).
-// Los mensajes son los mismos que los del modelo Planta, que sigue validando
-// como segunda barrera.
+// Reglas de formato de una planta nueva (spec 04) y de un riego (spec 05) como
+// funciones puras, sin Mongoose. Los mensajes son los mismos que los de los
+// modelos, que siguen validando como segunda barrera.
+
+const { interpretarFecha, esFechaFutura } = require("./fechas");
 
 const CAMPOS_TEXTO = [
   ["nombre", "El nombre es obligatorio"],
@@ -46,4 +48,68 @@ function validarPlanta(datos) {
   return detalles;
 }
 
-module.exports = { validarPlanta };
+const MENSAJES_RIEGO = {
+  plantaObligatoria: "La planta es obligatoria",
+  plantaNoValida: "La planta no tiene un identificador válido",
+  cantidadObligatoria: "La cantidad de agua es obligatoria",
+  cantidadEntera: "La cantidad de agua debe ser un número entero de mililitros",
+  cantidadMinima: "La cantidad de agua debe ser mayor que 0",
+  fechaNoValida: "La fecha no es válida",
+  fechaFutura: "Un riego no puede tener fecha futura",
+};
+
+const ID_HEXADECIMAL = /^[0-9a-f]{24}$/i;
+
+function errorPlantaDelRiego(valor) {
+  if (estaVacio(valor)) return MENSAJES_RIEGO.plantaObligatoria;
+  if (typeof valor !== "string" || !ID_HEXADECIMAL.test(valor)) {
+    return MENSAJES_RIEGO.plantaNoValida;
+  }
+  return null;
+}
+
+function errorCantidad(valor) {
+  if (estaVacio(valor)) return MENSAJES_RIEGO.cantidadObligatoria;
+  // Solo números: un texto como "500" no es un número entero de mililitros.
+  if (typeof valor !== "number" || !Number.isInteger(valor)) {
+    return MENSAJES_RIEGO.cantidadEntera;
+  }
+  if (valor < 1) return MENSAJES_RIEGO.cantidadMinima;
+  return null;
+}
+
+// Vacía es válida: el modelo pone la fecha de hoy.
+function errorFecha(valor, ahora) {
+  if (estaVacio(valor)) return null;
+  const valida =
+    valor instanceof Date ||
+    typeof valor === "string" ||
+    typeof valor === "number";
+  if (!valida) return MENSAJES_RIEGO.fechaNoValida;
+  // "AAAA-MM-DD" se lee en hora local; el resto se convierte como en Mongoose.
+  const interpretada = interpretarFecha(valor);
+  const fecha =
+    interpretada instanceof Date ? interpretada : new Date(interpretada);
+  if (Number.isNaN(fecha.getTime())) return MENSAJES_RIEGO.fechaNoValida;
+  if (esFechaFutura(fecha, ahora)) return MENSAJES_RIEGO.fechaFutura;
+  return null;
+}
+
+// Devuelve [{ campo, mensaje }] en el orden planta, cantidad y fecha; la lista
+// está vacía si el formato es válido. La regla de «no anterior al registro de
+// la planta» necesita la base de datos y sigue en la ruta.
+function validarRiego(datos, ahora = new Date()) {
+  const riego = datos ?? {};
+  const detalles = [];
+  const comprobaciones = [
+    ["planta", errorPlantaDelRiego(riego.planta)],
+    ["cantidadMl", errorCantidad(riego.cantidadMl)],
+    ["fecha", errorFecha(riego.fecha, ahora)],
+  ];
+  for (const [campo, mensaje] of comprobaciones) {
+    if (mensaje) detalles.push({ campo, mensaje });
+  }
+  return detalles;
+}
+
+module.exports = { validarPlanta, validarRiego };

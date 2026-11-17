@@ -1,6 +1,9 @@
 const { describe, test } = require("node:test");
 const assert = require("node:assert/strict");
-const { validarPlanta } = require("../../src/dominio/validaciones");
+const {
+  validarPlanta,
+  validarRiego,
+} = require("../../src/dominio/validaciones");
 
 function datosValidos() {
   return {
@@ -111,6 +114,153 @@ describe("validarPlanta", () => {
   for (const datos of [undefined, null]) {
     test(`trata ${datos} como una planta sin datos`, () => {
       assert.equal(validarPlanta(datos).length, 4);
+    });
+  }
+});
+
+describe("validarRiego", () => {
+  // Las fechas se construyen en hora local para que los tests no dependan de TZ.
+  const ahora = new Date(2026, 9, 28, 10, 0);
+  const PLANTA = "665f1c2a9b1e8a0012345678";
+
+  const CANTIDAD_ENTERA =
+    "La cantidad de agua debe ser un número entero de mililitros";
+  const CANTIDAD_MAYOR_QUE_0 = "La cantidad de agua debe ser mayor que 0";
+  const FECHA_FUTURA = "Un riego no puede tener fecha futura";
+
+  function riegoValido() {
+    return { planta: PLANTA, cantidadMl: 500 };
+  }
+
+  test("CA-05.1: una planta válida y 500 ml sin fecha es válido", () => {
+    assert.deepEqual(validarRiego(riegoValido(), ahora), []);
+  });
+
+  for (const [cantidadMl, mensaje] of [
+    [0, CANTIDAD_MAYOR_QUE_0],
+    [-5, CANTIDAD_MAYOR_QUE_0],
+    [2.5, CANTIDAD_ENTERA],
+  ]) {
+    test(`CA-05.2: una cantidad de ${cantidadMl} ml da «${mensaje}»`, () => {
+      assert.deepEqual(validarRiego({ ...riegoValido(), cantidadMl }, ahora), [
+        { campo: "cantidadMl", mensaje },
+      ]);
+    });
+  }
+
+  test("CA-05.3: la fecha de mañana es futura", () => {
+    const manana = new Date(2026, 9, 29, 9, 0);
+    assert.deepEqual(validarRiego({ ...riegoValido(), fecha: manana }, ahora), [
+      { campo: "fecha", mensaje: FECHA_FUTURA },
+    ]);
+  });
+
+  test("CA-05.4: hoy a las 23:59 con ahora a las 00:01 no es futura", () => {
+    const fecha = new Date(2026, 9, 28, 23, 59);
+    const temprano = new Date(2026, 9, 28, 0, 1);
+    assert.deepEqual(validarRiego({ ...riegoValido(), fecha }, temprano), []);
+  });
+
+  test('CA-05.5: una planta "123" no tiene un identificador válido', () => {
+    assert.deepEqual(validarRiego({ ...riegoValido(), planta: "123" }, ahora), [
+      {
+        campo: "planta",
+        mensaje: "La planta no tiene un identificador válido",
+      },
+    ]);
+  });
+
+  for (const planta of [undefined, null, "", "   "]) {
+    test(`una planta ${JSON.stringify(planta)} es obligatoria`, () => {
+      assert.deepEqual(validarRiego({ ...riegoValido(), planta }, ahora), [
+        { campo: "planta", mensaje: "La planta es obligatoria" },
+      ]);
+    });
+  }
+
+  for (const planta of ["665f1c2a9b1e8a001234567z", 12345, { id: PLANTA }]) {
+    test(`rechaza la planta ${JSON.stringify(planta)}`, () => {
+      assert.deepEqual(
+        validarRiego({ ...riegoValido(), planta }, ahora).map((d) => d.campo),
+        ["planta"],
+      );
+    });
+  }
+
+  test("acepta un identificador en mayúsculas", () => {
+    assert.deepEqual(
+      validarRiego({ ...riegoValido(), planta: PLANTA.toUpperCase() }, ahora),
+      [],
+    );
+  });
+
+  for (const cantidadMl of [undefined, null, ""]) {
+    test(`una cantidad ${JSON.stringify(cantidadMl)} es obligatoria`, () => {
+      assert.deepEqual(validarRiego({ ...riegoValido(), cantidadMl }, ahora), [
+        { campo: "cantidadMl", mensaje: "La cantidad de agua es obligatoria" },
+      ]);
+    });
+  }
+
+  test("rechaza una cantidad escrita como texto aunque sea un entero", () => {
+    assert.deepEqual(
+      validarRiego({ ...riegoValido(), cantidadMl: "500" }, ahora),
+      [{ campo: "cantidadMl", mensaje: CANTIDAD_ENTERA }],
+    );
+  });
+
+  for (const fecha of [null, ""]) {
+    test(`acepta una fecha ${JSON.stringify(fecha)} como vacía`, () => {
+      assert.deepEqual(validarRiego({ ...riegoValido(), fecha }, ahora), []);
+    });
+  }
+
+  test("acepta la fecha de hoy escrita como AAAA-MM-DD", () => {
+    assert.deepEqual(
+      validarRiego({ ...riegoValido(), fecha: "2026-10-28" }, ahora),
+      [],
+    );
+  });
+
+  test("rechaza mañana escrita como AAAA-MM-DD", () => {
+    assert.deepEqual(
+      validarRiego({ ...riegoValido(), fecha: "2026-10-29" }, ahora),
+      [{ campo: "fecha", mensaje: FECHA_FUTURA }],
+    );
+  });
+
+  test("acepta una fecha pasada", () => {
+    assert.deepEqual(
+      validarRiego({ ...riegoValido(), fecha: "2020-01-15" }, ahora),
+      [],
+    );
+  });
+
+  for (const fecha of ["no es una fecha", "2026-13-45T99:00", true, {}]) {
+    test(`rechaza la fecha ${JSON.stringify(fecha)}`, () => {
+      assert.deepEqual(validarRiego({ ...riegoValido(), fecha }, ahora), [
+        { campo: "fecha", mensaje: "La fecha no es válida" },
+      ]);
+    });
+  }
+
+  test("devuelve los detalles en el orden planta, cantidad y fecha", () => {
+    const detalles = validarRiego(
+      { fecha: "2026-10-29", cantidadMl: 0, planta: "123" },
+      ahora,
+    );
+    assert.deepEqual(
+      detalles.map((d) => d.campo),
+      ["planta", "cantidadMl", "fecha"],
+    );
+  });
+
+  for (const datos of [undefined, null]) {
+    test(`trata ${datos} como un riego sin planta ni cantidad`, () => {
+      assert.deepEqual(
+        validarRiego(datos, ahora).map((d) => d.campo),
+        ["planta", "cantidadMl"],
+      );
     });
   }
 });
