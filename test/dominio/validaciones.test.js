@@ -1,6 +1,7 @@
 const { describe, test } = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  esIdValido,
   validarPlanta,
   validarRiego,
 } = require("../../src/dominio/validaciones");
@@ -261,6 +262,37 @@ describe("validarRiego", () => {
         validarRiego(datos, ahora).map((d) => d.campo),
         ["planta", "cantidadMl"],
       );
+    });
+  }
+});
+
+describe("esIdValido", () => {
+  test('CA-06.1: "665f1c2a9b1e8a0012345678" es un identificador válido', () => {
+    assert.equal(esIdValido("665f1c2a9b1e8a0012345678"), true);
+  });
+
+  for (const valor of ["123", "", null]) {
+    test(`CA-06.1: ${JSON.stringify(valor)} no es un identificador válido`, () => {
+      assert.equal(esIdValido(valor), false);
+    });
+  }
+
+  test("acepta un identificador en mayúsculas", () => {
+    assert.equal(esIdValido("665F1C2A9B1E8A0012345678"), true);
+  });
+
+  for (const valor of [
+    "665f1c2a9b1e8a001234567",
+    "665f1c2a9b1e8a00123456789",
+    "665f1c2a9b1e8a001234567z",
+    " 665f1c2a9b1e8a0012345678 ",
+    "abc",
+    undefined,
+    123456789012345678901234,
+    { id: "665f1c2a9b1e8a0012345678" },
+  ]) {
+    test(`rechaza ${JSON.stringify(valor)}`, () => {
+      assert.equal(esIdValido(valor), false);
     });
   }
 });
