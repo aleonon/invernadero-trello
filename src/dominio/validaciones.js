@@ -60,11 +60,14 @@ const MENSAJES_RIEGO = {
 
 const ID_HEXADECIMAL = /^[0-9a-f]{24}$/i;
 
+// Verdadero solo para un texto de 24 caracteres hexadecimales (spec 06).
+function esIdValido(valor) {
+  return typeof valor === "string" && ID_HEXADECIMAL.test(valor);
+}
+
 function errorPlantaDelRiego(valor) {
   if (estaVacio(valor)) return MENSAJES_RIEGO.plantaObligatoria;
-  if (typeof valor !== "string" || !ID_HEXADECIMAL.test(valor)) {
-    return MENSAJES_RIEGO.plantaNoValida;
-  }
+  if (!esIdValido(valor)) return MENSAJES_RIEGO.plantaNoValida;
   return null;
 }
 
@@ -112,4 +115,4 @@ function validarRiego(datos, ahora = new Date()) {
   return detalles;
 }
 
-module.exports = { validarPlanta, validarRiego };
+module.exports = { esIdValido, validarPlanta, validarRiego };
